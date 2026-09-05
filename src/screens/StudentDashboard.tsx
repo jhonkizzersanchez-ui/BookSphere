@@ -95,7 +95,6 @@ export default function StudentDashboard({ onNavigate }: Props) {
             <div className="space-y-3">
               {borrowed.map(({ record, book }) => {
                 const due = new Date(record.dueDate);
-                const today = new Date('2024-03-23');
                 const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
                 const progressPct = Math.max(0, Math.min(100, ((14 - diff) / 14) * 100));
                 return (
