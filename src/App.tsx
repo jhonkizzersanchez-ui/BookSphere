@@ -8,6 +8,8 @@ import TeacherDashboard from './screens/TeacherDashboard';
 import LibrarianPanel from './screens/LibrarianPanel';
 import SearchResults from './screens/SearchResults';
 import Navbar from './components/Navbar';
+import { auth, ApiError } from './lib/auth';
+import type { AuthUser } from './lib/auth';
 
 export type Role = 'student' | 'teacher' | 'librarian';
 export type View =
@@ -65,12 +67,38 @@ const roleAccent: Record<Role, string> = {
 };
 
 export default function App() {
-  const [role, setRole] = useState<Role | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const role = user?.role ?? null;
+  const [authLoaded, setAuthLoaded] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
   const [view, setView] = useState<View>('login');
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('reset_token')) {
+      setAuthLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    auth.currentUser().then(account => {
+      if (cancelled) return;
+      setUser(account);
+      if (account) setView(account.role === 'student' ? 'student-dashboard' : account.role === 'teacher' ? 'teacher-dashboard' : 'librarian-panel');
+    }).catch(error => {
+      if (!cancelled) setAuthError(error instanceof Error ? error.message : 'Unable to check your session.');
+    }).finally(() => { if (!cancelled) setAuthLoaded(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const expire = () => { setUser(null); setView('login'); setSelectedBookId(null); setSearchQuery(''); };
+    window.addEventListener('booksphere-session-expired', expire);
+    return () => window.removeEventListener('booksphere-session-expired', expire);
+  }, []);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -82,18 +110,32 @@ export default function App() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
   };
 
-  const login = (selectedRole: Role) => {
-    setRole(selectedRole);
+  const login = (account: AuthUser) => {
+    const selectedRole = account.role;
+    setUser(account);
     if (selectedRole === 'student') setView('student-dashboard');
     else if (selectedRole === 'teacher') setView('teacher-dashboard');
     else setView('librarian-panel');
   };
 
-  const logout = () => {
-    setRole(null);
+  const logout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await auth.logout();
+    } catch (error) {
+      if (!(error instanceof ApiError && error.status === 401)) {
+        addToast(error instanceof Error ? error.message : 'Unable to sign out. Try again.', 'warning');
+        return;
+      }
+    } finally {
+      setLoggingOut(false);
+    }
+    setUser(null);
     setView('login');
     setSelectedBookId(null);
     setSearchQuery('');
+    setToasts([]);
   };
 
   const navigate = (newView: View, bookId?: string) => {
@@ -107,7 +149,16 @@ export default function App() {
     setView('search');
   };
 
-  if (view === 'login') {
+  if (!authLoaded || authError) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#FDFBF7] px-6">
+      <div className="max-w-md text-center text-[#264653]">
+        <p>{authError || 'Checking your session…'}</p>
+        {authError && <button className="mt-4 px-5 py-2 rounded-xl bg-[#2A9D8F] text-white" onClick={() => window.location.reload()}>Try again</button>}
+      </div>
+    </div>;
+  }
+
+  if (view === 'login' || !user) {
     return <Login onLogin={login} />;
   }
 
@@ -120,6 +171,8 @@ export default function App() {
     <div className="min-h-screen" style={{ backgroundColor: '#FDFBF7' }}>
       {/* Top Navbar */}
       <Navbar
+        user={user}
+        loggingOut={loggingOut}
         role={role!}
         view={view}
         onNavigate={navigate}
@@ -195,11 +248,11 @@ export default function App() {
                 className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
                 style={{ backgroundColor: accent }}
               >
-                {role === 'student' ? 'AR' : role === 'teacher' ? 'MC' : 'LO'}
+                {user.name.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('')}
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-[#264653] truncate">
-                  {role === 'student' ? 'Alex Rivera' : role === 'teacher' ? 'Ms. Chen' : 'Mr. Okafor'}
+                  {user.name}
                 </p>
                 <p className="text-[10px] text-[#9BB5C0] capitalize">{role}</p>
               </div>
@@ -247,7 +300,7 @@ export default function App() {
           className={`flex-1 min-w-0 overflow-x-hidden pb-20 md:pb-6 ${isLibrarianFullLayout ? 'p-0' : ''}`}
         >
           {view === 'student-dashboard' && role === 'student' && (
-            <StudentDashboard onNavigate={navigate} onToast={addToast} />
+            <StudentDashboard userName={user.name} onNavigate={navigate} onToast={addToast} />
           )}
           {view === 'catalog' && (
             <BookCatalog onNavigate={navigate} onToast={addToast} />
@@ -259,7 +312,7 @@ export default function App() {
             <MyBooks onNavigate={navigate} onToast={addToast} />
           )}
           {view === 'teacher-dashboard' && role === 'teacher' && (
-            <TeacherDashboard onNavigate={navigate} onToast={addToast} />
+            <TeacherDashboard userName={user.name} onNavigate={navigate} onToast={addToast} />
           )}
           {view === 'librarian-panel' && role === 'librarian' && (
             <LibrarianPanel onNavigate={navigate} onToast={addToast} />

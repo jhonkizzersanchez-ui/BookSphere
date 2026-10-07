@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import type { Role, View } from '../App';
+import type { AuthUser } from '../lib/auth';
 
 interface NavbarProps {
   role: Role;
+  user: AuthUser;
+  loggingOut: boolean;
   view: View;
   onNavigate: (view: View) => void;
   onLogout: () => void;
@@ -25,20 +28,10 @@ const roleLabels: Record<Role, string> = {
   librarian: 'Librarian',
 };
 
-const roleInitials: Record<Role, string> = {
-  student: 'AR',
-  teacher: 'Ms. C',
-  librarian: 'Lib',
-};
-
-const roleNames: Record<Role, string> = {
-  student: 'Alex Rivera',
-  teacher: 'Ms. Chen',
-  librarian: 'Mr. Okafor',
-};
-
 export default function Navbar({
   role,
+  user,
+  loggingOut,
   view,
   onNavigate,
   onLogout,
@@ -142,10 +135,10 @@ export default function Navbar({
             className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
             style={{ backgroundColor: roleColors[role] }}
           >
-            {roleInitials[role]}
+            {user.name.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('')}
           </div>
           <div className="hidden sm:block text-left">
-            <p className="text-xs font-semibold text-[#264653] leading-tight">{roleNames[role]}</p>
+            <p className="text-xs font-semibold text-[#264653] leading-tight">{user.name}</p>
             <p className="text-[10px] text-[#6B8EA0] leading-tight">{roleLabels[role]}</p>
           </div>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="hidden sm:block text-[#6B8EA0]">
@@ -159,14 +152,15 @@ export default function Navbar({
             style={{ backgroundColor: '#FDFBF7' }}
           >
             <div className="px-4 py-2 border-b border-[#E8EDF0]">
-              <p className="text-sm font-semibold text-[#264653]">{roleNames[role]}</p>
+              <p className="text-sm font-semibold text-[#264653]">{user.name}</p>
               <p className="text-xs text-[#6B8EA0]">{roleLabels[role]}</p>
             </div>
             <button
+              disabled={loggingOut}
               onClick={() => { setUserMenuOpen(false); onLogout(); }}
               className="w-full text-left px-4 py-2 text-sm text-[#E76F51] hover:bg-[#FEF0EE] transition-colors"
             >
-              Sign out
+              {loggingOut ? 'Signing out…' : 'Sign out'}
             </button>
           </div>
         )}

@@ -1,15 +1,11 @@
 import { useState } from 'react';
 import type { Role } from '../App';
+import { auth, ApiError } from '../lib/auth';
+import type { AuthUser } from '../lib/auth';
 
 interface LoginProps {
-  onLogin: (role: Role) => void;
+  onLogin: (user: AuthUser) => void;
 }
-
-const credentials: Record<Role, { id: string; password: string }> = {
-  student:   { id: '202407001', password: 'student123' },
-  teacher:   { id: 'ms.chen',   password: 'teacher123' },
-  librarian: { id: 'mr.okafor', password: 'library2024' },
-};
 
 const roles: { id: Role; label: string; emoji: string; description: string; color: string; bg: string }[] = [
   { id: 'student', label: 'Student', emoji: '🎒', description: 'Find books, track reading, earn badges', color: '#2A9D8F', bg: '#E8F5F3' },
@@ -18,7 +14,7 @@ const roles: { id: Role; label: string; emoji: string; description: string; colo
 ];
 
 
-type Screen = 'login' | 'signup' | 'signup-success' | 'forgot' | 'forgot-sent';
+type Screen = 'login' | 'signup' | 'signup-success' | 'forgot' | 'forgot-sent' | 'reset' | 'reset-success';
 
 const inputCls = (hasError: boolean) =>
   `w-full px-3 py-2.5 rounded-xl border text-sm text-[#264653] placeholder:text-[#BCCDD5] focus:outline-none focus:ring-2 transition-all ${hasError ? 'border-[#E76F51] focus:ring-[#E76F51]/20' : 'border-[#E8EDF0] focus:ring-[#2A9D8F]/30 focus:border-[#2A9D8F]'}`;
@@ -26,8 +22,10 @@ const inputCls = (hasError: boolean) =>
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-semibold mb-1.5" style={{ color: '#264653' }}>{label}</label>
-      {children}
+      <label className="block" style={{ color: '#264653' }}>
+        <span className="block text-xs font-semibold mb-1.5">{label}</span>
+        {children}
+      </label>
       {error && <p className="text-[11px] mt-1 font-medium" style={{ color: '#E76F51' }}>{error}</p>}
     </div>
   );
@@ -49,7 +47,7 @@ const emptySignup: SignupForm = {
 };
 
 export default function Login({ onLogin }: LoginProps) {
-  const [screen, setScreen] = useState<Screen>('login');
+  const [screen, setScreen] = useState<Screen>(() => new URLSearchParams(window.location.search).has('reset_token') ? 'reset' : 'login');
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -60,52 +58,98 @@ export default function Login({ onLogin }: LoginProps) {
   const [signupForm, setSignupForm] = useState<SignupForm>(emptySignup);
   const [signupErrors, setSignupErrors] = useState<Partial<SignupForm>>({});
   const [signupLoading, setSignupLoading] = useState(false);
+  const [signupError, setSignupError] = useState('');
   const [resetId, setResetId] = useState('');
   const [resetRole, setResetRole] = useState<Role>('student');
   const [resetError, setResetError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetEmail] = useState(() => new URLSearchParams(window.location.search).get('email') ?? '');
+  const [resetToken] = useState(() => new URLSearchParams(window.location.search).get('reset_token') ?? '');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   const sf = (field: keyof SignupForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setSignupForm((prev) => ({ ...prev, [field]: e.target.value }));
     setSignupErrors((prev) => ({ ...prev, [field]: '' }));
   };
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Partial<SignupForm> = {};
     if (!signupForm.fullName.trim())                            errs.fullName = 'Full name is required.';
     if (signupRole === 'student' && !signupForm.studentId.trim()) errs.studentId = 'Student ID is required.';
-    if (signupRole !== 'student' && !signupForm.email.trim())   errs.email = 'School email is required.';
+    if (!signupForm.email.trim())                             errs.email = 'School email is required.';
     if (signupRole === 'student' && !signupForm.grade)          errs.grade = 'Please select a grade.';
     if (signupRole === 'librarian' && !signupForm.staffId.trim()) errs.staffId = 'Staff ID is required.';
     if (!signupForm.password)                                    errs.password = 'Password is required.';
-    else if (signupForm.password.length < 8)                    errs.password = 'Must be at least 8 characters.';
+    else if (signupForm.password.length < 12 || !/[a-z]/i.test(signupForm.password) || !/\d/.test(signupForm.password)) errs.password = 'Use at least 12 characters with letters and numbers.';
     if (signupForm.password !== signupForm.confirmPassword)     errs.confirmPassword = 'Passwords do not match.';
     if (Object.keys(errs).length) { setSignupErrors(errs); return; }
     setSignupLoading(true);
-    setTimeout(() => { setSignupLoading(false); setScreen('signup-success'); }, 900);
+    setSignupError('');
+    try {
+      await auth.register({ ...signupForm, role: signupRole, fullName: signupForm.fullName.trim(), email: signupForm.email.trim(), studentId: signupForm.studentId.trim(), password_confirmation: signupForm.confirmPassword });
+      setSignupForm(prev => ({ ...prev, password: '', confirmPassword: '' }));
+      setScreen('signup-success');
+    } catch (error) {
+      setSignupError(error instanceof Error ? error.message : 'Registration failed.');
+      if (error instanceof ApiError) {
+        setSignupErrors(Object.fromEntries(Object.entries(error.errors).map(([key, messages]) => [key === 'password_confirmation' ? 'confirmPassword' : key, messages[0]])));
+      }
+    } finally {
+      setSignupLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRole) { setError('Please select your role first.'); return; }
     if (!username)     { setError(selectedRole === 'student' ? 'Please enter your Student ID.' : 'Please enter your username.'); return; }
     if (!password)     { setError('Please enter your password.'); return; }
-    const creds = credentials[selectedRole];
-    if (username !== creds.id || password !== creds.password) {
-      setError('Incorrect credentials. Check the hint below and try again.');
-      return;
-    }
     setLoading(true);
-    setTimeout(() => { setLoading(false); onLogin(selectedRole); }, 800);
+    setError('');
+    try {
+      onLogin(await auth.login(username, password));
+    } catch (error) {
+      setError(error instanceof ApiError ? error.errors.username?.[0] ?? error.message : 'Sign in failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleResetSubmit = (e: React.FormEvent) => {
+  const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetId.trim()) {
-      setResetError(resetRole === 'student' ? 'Please enter your Student ID.' : 'Please enter your username or email.');
+      setResetError('Please enter your registered school email.');
       return;
     }
-    setScreen('forgot-sent');
+    setResetLoading(true);
+    setResetError('');
+    try {
+      await auth.forgotPassword(resetId);
+      setScreen('forgot-sent');
+    } catch (error) {
+      setResetError(error instanceof ApiError ? error.errors.email?.[0] ?? error.message : 'Reset request failed.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetLoading(true);
+    setResetError('');
+    try {
+      await auth.resetPassword(resetEmail, resetToken, newPassword, confirmNewPassword);
+      setNewPassword('');
+      setConfirmNewPassword('');
+      window.history.replaceState({}, '', window.location.pathname);
+      setScreen('reset-success');
+    } catch (error) {
+      setResetError(error instanceof ApiError ? Object.values(error.errors)[0]?.[0] ?? error.message : 'Password reset failed.');
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const selectedRoleData = roles.find((r) => r.id === selectedRole);
@@ -163,20 +207,22 @@ export default function Login({ onLogin }: LoginProps) {
 
               <form onSubmit={handleSubmit} className="space-y-3 mt-2">
                 <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: '#264653' }}>
-                    {selectedRole === 'student' ? 'Student ID' : 'Username'}
+                  <label htmlFor="login-username" className="block text-xs font-semibold mb-1.5" style={{ color: '#264653' }}>
+                    {selectedRole === 'student' ? 'Student ID or email' : 'School email or username'}
                   </label>
                   <input
                     type="text"
+                    id="login-username"
                     value={username}
                     onChange={(e) => { setUsername(e.target.value); setError(''); }}
-                    placeholder={selectedRole === 'student' ? 'e.g. 202407001' : 'Enter username'}
+                    placeholder={selectedRole === 'student' ? 'Enter Student ID or email' : 'Enter school email or username'}
+                    autoComplete="username"
                     className="w-full px-3 py-2.5 rounded-xl border border-[#E8EDF0] text-sm text-[#264653] placeholder:text-[#BCCDD5] focus:outline-none focus:ring-2 focus:ring-[#2A9D8F]/30 focus:border-[#2A9D8F] transition-all"
                   />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold" style={{ color: '#264653' }}>Password</label>
+                    <label htmlFor="login-password" className="block text-xs font-semibold" style={{ color: '#264653' }}>Password</label>
                     <button
                       type="button"
                       onClick={() => { setScreen('forgot'); setResetRole(selectedRole ?? 'student'); setResetError(''); setResetId(''); }}
@@ -189,9 +235,11 @@ export default function Login({ onLogin }: LoginProps) {
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
+                      id="login-password"
                       value={password}
                       onChange={(e) => { setPassword(e.target.value); setError(''); }}
                       placeholder="Enter password"
+                      autoComplete="current-password"
                       className="w-full px-3 py-2.5 pr-10 rounded-xl border border-[#E8EDF0] text-sm text-[#264653] placeholder:text-[#BCCDD5] focus:outline-none focus:ring-2 focus:ring-[#2A9D8F]/30 focus:border-[#2A9D8F] transition-all"
                     />
                     <button
@@ -208,17 +256,7 @@ export default function Login({ onLogin }: LoginProps) {
                   <p className="text-xs text-[#E76F51] bg-[#FEF0EE] px-3 py-2 rounded-lg">{error}</p>
                 )}
 
-                {selectedRole && (
-                  <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border border-dashed border-[#D8E8EC]" style={{ backgroundColor: '#F8FBFC' }}>
-                    <span className="text-sm flex-shrink-0">🔐</span>
-                    <div className="text-[11px] leading-relaxed" style={{ color: '#6B8EA0' }}>
-                      <span className="font-semibold text-[#264653]">Demo — </span>
-                      ID: <code className="bg-[#E8EDF0] px-1 rounded font-mono">{credentials[selectedRole].id}</code>
-                      {' · '}
-                      Password: <code className="bg-[#E8EDF0] px-1 rounded font-mono">{credentials[selectedRole].password}</code>
-                    </div>
-                  </div>
-                )}
+
 
                 <button
                   type="submit"
@@ -345,18 +383,12 @@ export default function Login({ onLogin }: LoginProps) {
                 </>
               )}
 
-              {/* Teacher / Librarian fields */}
+              <Field label="School Email" error={signupErrors.email}>
+                <input type="email" value={signupForm.email} onChange={sf('email')}
+                  placeholder="Your school email" autoComplete="email" className={inputCls(!!signupErrors.email)} />
+              </Field>
               {signupRole !== 'student' && (
                 <>
-                  <Field label="School Email" error={signupErrors.email}>
-                    <input
-                      type="email"
-                      value={signupForm.email}
-                      onChange={sf('email')}
-                      placeholder={signupRole === 'teacher' ? 'e.g. j.lee@westview.edu' : 'e.g. librarian@westview.edu'}
-                      className={inputCls(!!signupErrors.email)}
-                    />
-                  </Field>
                   {signupRole === 'librarian' && (
                     <Field label="Staff ID" error={signupErrors.staffId}>
                       <input
@@ -376,7 +408,7 @@ export default function Login({ onLogin }: LoginProps) {
                   type="password"
                   value={signupForm.password}
                   onChange={sf('password')}
-                  placeholder="At least 8 characters"
+                  placeholder="12+ characters with letters and numbers"
                   className={inputCls(!!signupErrors.password)}
                 />
               </Field>
@@ -397,11 +429,12 @@ export default function Login({ onLogin }: LoginProps) {
                   <p className="text-[11px] leading-relaxed" style={{ color: '#2B47CE' }}>
                     {signupRole === 'teacher'
                       ? 'Teacher accounts require approval from the school librarian before activation.'
-                      : 'Librarian accounts require approval from the school administrator.'}
+                      : 'Librarian accounts require approval from an existing librarian.'}
                   </p>
                 </div>
               )}
 
+              {signupError && <p role="alert" className="text-xs text-[#E76F51] bg-[#FEF0EE] px-3 py-2 rounded-lg">{signupError}</p>}
               <button
                 type="submit"
                 disabled={signupLoading}
@@ -451,14 +484,14 @@ export default function Login({ onLogin }: LoginProps) {
               {signupRole === 'student'
                 ? 'Your account is ready. Sign in with your Student ID to start exploring the library.'
                 : signupRole === 'teacher'
-                ? 'Your account is pending librarian approval. You\'ll receive an email once it\'s activated.'
-                : 'Your account is pending administrator approval. You\'ll receive a confirmation email shortly.'}
+                ? 'Your account is pending librarian approval. Contact the library to activate it.'
+                : 'Your account is pending approval from an existing librarian. Contact the library to activate it.'}
             </p>
 
             <div className="text-left space-y-2 mb-6 p-4 rounded-xl" style={{ backgroundColor: '#F5F9FA' }}>
               {(signupRole === 'student'
                 ? ['Account registered ✓', 'Sign in with your Student ID', 'Start borrowing books!']
-                : ['Account request submitted ✓', 'Awaiting admin approval', 'Activation email will be sent']
+                : ['Account request submitted ✓', 'Awaiting librarian approval', 'Sign in with your school email after approval']
               ).map((step, i) => (
                 <div key={i} className="flex items-center gap-2.5">
                   <div
@@ -526,126 +559,51 @@ export default function Login({ onLogin }: LoginProps) {
               ))}
             </div>
 
-            <form onSubmit={handleResetSubmit} className="space-y-3">
-              {resetRole === 'student' ? (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1.5" style={{ color: '#264653' }}>Student ID</label>
-                    <input
-                      type="text"
-                      value={resetId}
-                      onChange={(e) => { setResetId(e.target.value); setResetError(''); }}
-                      placeholder="e.g. 202407001"
-                      autoFocus
-                      className="w-full px-3 py-2.5 rounded-xl border border-[#E8EDF0] text-sm text-[#264653] placeholder:text-[#BCCDD5] focus:outline-none focus:ring-2 focus:ring-[#2A9D8F]/30 focus:border-[#2A9D8F] transition-all"
-                    />
-                  </div>
-                  <div className="flex items-start gap-2.5 p-3 rounded-xl" style={{ backgroundColor: '#FFF3E8' }}>
-                    <span className="text-base flex-shrink-0 mt-0.5">💡</span>
-                    <p className="text-xs leading-relaxed" style={{ color: '#B56120' }}>
-                      A reset request will be sent to your school librarian or homeroom teacher. They will contact you with a temporary password.
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1.5" style={{ color: '#264653' }}>
-                      {resetRole === 'teacher' ? 'School email address' : 'Admin username or email'}
-                    </label>
-                    <input
-                      type={resetRole === 'teacher' ? 'email' : 'text'}
-                      value={resetId}
-                      onChange={(e) => { setResetId(e.target.value); setResetError(''); }}
-                      placeholder={resetRole === 'teacher' ? 'e.g. m.chen@westview.edu' : 'Enter username or email'}
-                      autoFocus
-                      className="w-full px-3 py-2.5 rounded-xl border border-[#E8EDF0] text-sm text-[#264653] placeholder:text-[#BCCDD5] focus:outline-none focus:ring-2 focus:ring-[#2A9D8F]/30 focus:border-[#2A9D8F] transition-all"
-                    />
-                  </div>
-                  <div className="flex items-start gap-2.5 p-3 rounded-xl" style={{ backgroundColor: '#EEF0FD' }}>
-                    <span className="text-base flex-shrink-0 mt-0.5">📬</span>
-                    <p className="text-xs leading-relaxed" style={{ color: '#2B47CE' }}>
-                      A password reset link will be sent to your school email address. Check your inbox — it usually arrives within a few minutes.
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {resetError && (
-                <p className="text-xs text-[#E76F51] bg-[#FEF0EE] px-3 py-2 rounded-lg">{resetError}</p>
-              )}
-
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 active:scale-[0.98]"
-                style={{ backgroundColor: roles.find((r) => r.id === resetRole)?.color ?? '#2A9D8F' }}
-              >
-                {resetRole === 'student' ? 'Send Reset Request' : 'Send Reset Link'}
+            <form onSubmit={handleResetSubmit} className="space-y-4">
+              <Field label="Registered school email" error={resetError}>
+                <input type="email" value={resetId} onChange={e => { setResetId(e.target.value); setResetError(''); }}
+                  required autoComplete="email" className={inputCls(!!resetError)} placeholder="Enter your registered email" />
+              </Field>
+              <p className="text-xs text-[#6B8EA0]">Use the email address you registered with. If you cannot access it, contact your librarian.</p>
+              <button type="submit" disabled={resetLoading} className="w-full py-3 rounded-xl text-sm font-bold text-white bg-[#2A9D8F] disabled:opacity-60">
+                {resetLoading ? 'Sending…' : 'Send reset link'}
               </button>
             </form>
           </div>
         )}
 
-        {/* ── RESET SENT ── */}
         {screen === 'forgot-sent' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-[#E8EDF0] p-8 text-center">
-            <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-5"
-              style={{ backgroundColor: '#E8F5F3' }}
-            >
-              {resetRole === 'student' ? '📋' : '📬'}
-            </div>
-            <h2 className="text-xl font-bold mb-2" style={{ fontFamily: "'Baloo 2', sans-serif", color: '#264653' }}>
-              {resetRole === 'student' ? 'Request sent!' : 'Check your email!'}
-            </h2>
-            <p className="text-sm leading-relaxed mb-1" style={{ color: '#264653' }}>
-              {resetRole === 'student' ? (
-                <>A reset request has been submitted for student ID <strong>{resetId}</strong>.</>
-              ) : (
-                <>We sent a reset link to <strong>{resetId}</strong>.</>
-              )}
-            </p>
-            <p className="text-xs mb-6" style={{ color: '#6B8EA0' }}>
-              {resetRole === 'student'
-                ? 'Your librarian or homeroom teacher will reach out with a temporary password. Usually within one school day.'
-                : 'The link expires in 30 minutes. Check your spam folder if it doesn\'t arrive.'}
-            </p>
-
-            {/* Steps */}
-            <div className="text-left space-y-2 mb-6 p-4 rounded-xl" style={{ backgroundColor: '#F5F9FA' }}>
-              {(resetRole === 'student'
-                ? ['Your request was logged ✓', 'Librarian will be notified', 'You\'ll receive a temp password']
-                : ['Check your school email inbox', 'Click the reset link', 'Create a new password']
-              ).map((step, i) => (
-                <div key={i} className="flex items-center gap-2.5">
-                  <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                    style={{ backgroundColor: '#2A9D8F' }}
-                  >
-                    {i + 1}
-                  </div>
-                  <p className="text-xs" style={{ color: '#264653' }}>{step}</p>
-                </div>
-              ))}
-            </div>
-
-            <button
-              onClick={() => { setScreen('login'); setResetId(''); }}
-              className="w-full py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
-              style={{ backgroundColor: '#2A9D8F' }}
-            >
-              Back to Sign In
-            </button>
-
-            {resetRole !== 'student' && (
-              <button
-                onClick={() => { setScreen('forgot'); setResetId(''); setResetError(''); }}
-                className="w-full mt-2 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-[#F0F4F6]"
-                style={{ color: '#6B8EA0' }}
-              >
-                Use a different email
+          <div className="bg-white rounded-2xl border border-[#E8EDF0] p-8 text-center">
+            <h2 className="text-xl font-bold text-[#264653] mb-3">Reset link requested</h2>
+            <p className="text-sm text-[#6B8EA0] mb-6">If an account exists for that email, a reset link has been requested. Check your inbox or contact the library.</p>
+            <button onClick={() => setScreen('login')} className="w-full py-3 rounded-xl text-sm font-bold text-white bg-[#2A9D8F]">Back to sign in</button>
+          </div>
+        )}
+        {screen === 'reset' && (
+          <div className="bg-white rounded-2xl border border-[#E8EDF0] p-6">
+            <h2 className="text-xl font-bold text-[#264653] mb-4">Choose a new password</h2>
+            <form onSubmit={handleNewPassword} className="space-y-4">
+              <Field label="New password">
+                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                  autoComplete="new-password" minLength={12} required className={inputCls(false)} placeholder="12+ characters with letters and numbers" />
+              </Field>
+              <Field label="Confirm password">
+                <input type="password" value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)}
+                  autoComplete="new-password" required className={inputCls(false)} />
+              </Field>
+              {resetError && <p role="alert" className="text-xs text-[#E76F51]">{resetError}</p>}
+              <button type="submit" disabled={resetLoading} className="w-full py-3 rounded-xl text-sm font-bold text-white bg-[#2A9D8F] disabled:opacity-60">
+                {resetLoading ? 'Updating…' : 'Update password'}
               </button>
-            )}
+            </form>
+            <button onClick={() => { window.history.replaceState({}, '', window.location.pathname); setScreen('forgot'); }} className="mt-4 text-xs font-semibold text-[#2A9D8F]">Request a new reset link</button>
+          </div>
+        )}
+        {screen === 'reset-success' && (
+          <div className="bg-white rounded-2xl border border-[#E8EDF0] p-8 text-center">
+            <h2 className="text-xl font-bold text-[#264653] mb-3">Password updated</h2>
+            <p className="text-sm text-[#6B8EA0] mb-6">Sign in with your new password.</p>
+            <button onClick={() => setScreen('login')} className="w-full py-3 rounded-xl text-sm font-bold text-white bg-[#2A9D8F]">Back to sign in</button>
           </div>
         )}
       </div>

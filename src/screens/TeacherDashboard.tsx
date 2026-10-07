@@ -4,6 +4,7 @@ import BookCover from '../components/BookCover';
 import type { View } from '../App';
 
 interface Props {
+  userName: string;
   onNavigate: (view: View, bookId?: string) => void;
   onToast: (msg: string, type?: 'success' | 'info' | 'warning') => void;
 }
@@ -14,7 +15,7 @@ const readingListBooks = [
   { bookId: 'b7', required: false },
 ];
 
-export default function TeacherDashboard({ onNavigate, onToast }: Props) {
+export default function TeacherDashboard({ onNavigate, onToast, userName }: Props) {
   const [activeTab, setActiveTab] = useState<'class' | 'lists' | 'requests'>('class');
   const [searchStudent, setSearchStudent] = useState('');
   const [showAddBook, setShowAddBook] = useState(false);
@@ -36,7 +37,7 @@ export default function TeacherDashboard({ onNavigate, onToast }: Props) {
           <h1 className="text-2xl font-bold" style={{ fontFamily: "'Baloo 2', sans-serif", color: '#264653' }}>
             Class 7B — Reading Overview
           </h1>
-          <p className="text-sm" style={{ color: '#6B8EA0' }}>Ms. Chen · English & Reading · Spring 2024</p>
+          <p className="text-sm" style={{ color: '#6B8EA0' }}>{userName} · Reading overview</p>
         </div>
         <div className="flex gap-2">
           <button

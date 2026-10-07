@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc -b && vite build",
+    "api": "node scripts/php.mjs serve",
+    "backend:setup": "node scripts/php.mjs setup",
+    "backend:admin": "node scripts/create-librarian.mjs",
+    "test": "node --experimental-strip-types --test tests/auth-client.test.mjs",
+    "test:backend": "node --test tests/php-api.test.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

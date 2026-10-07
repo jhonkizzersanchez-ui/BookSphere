@@ -1,142 +1,101 @@
-# BookSphere — Setup to Hero
+# BookSphere — React + PHP + MySQL
 
-A guide to get BookSphere running locally and understand the codebase well enough to extend it. BookSphere is a school library management app with three roles — Student, Teacher, Librarian — each with their own dashboard and permissions.
+BookSphere uses React, Vite, TypeScript and Tailwind for the interface, and plain PHP with PDO/MySQL for authentication. No Laravel or Composer is needed.
 
-## 1. Prerequisites
+## Start locally with XAMPP
 
-- Node.js 20+ (Node 25 is what this project was built and tested with)
-- npm (comes with Node)
-- Git
+1. Start **MySQL** in the XAMPP Control Panel. XAMPP's service is MariaDB, which is compatible with this project.
+2. In phpMyAdmin, create a database named `booksphere` using `utf8mb4_unicode_ci`. On this machine, this database already exists and the authentication tables are installed.
+3. If your database credentials differ from XAMPP's local defaults (`root`, blank password), copy `backend/config.example.php` to `backend/config.php` and edit the database settings. The local configuration is ignored by Git.
+4. From the project root, run:
 
-## 2. Setup
-
-Clone the repo:
-
-```bash
-git clone https://github.com/jhonkizzersanchez-ui/BookSphere.git
-cd BookSphere
-```
-
-Install dependencies:
-
-```bash
+```powershell
 npm install
+npm run backend:setup
+npm run api
 ```
 
-This installs React 19, Vite 8, TypeScript, and Tailwind CSS v4 (via the `@tailwindcss/vite` plugin — no separate `tailwind.config.js` needed, theme tokens live in `src/index.css`).
+5. In a second terminal, run:
 
-## 3. Running the app
-
-```bash
+```powershell
 npm run dev
 ```
 
-Opens the Vite dev server (defaults to `http://localhost:5173`, or the next free port). Hot module reload is on — edits to any `.tsx`/`.ts`/`.css` file reflect instantly in the browser.
+Open `http://localhost:5173`. The API runs on `http://localhost:8000` using `C:\xampp\php\php.exe`. The Vite proxy forwards `/api/*` to PHP. The runner accepts `PHP_BIN` if XAMPP is installed somewhere else. This is a PHP development server using XAMPP's PHP and MySQL; Apache is optional.
 
-Other scripts:
+Setup creates missing authentication tables and preserves existing accounts. It never drops tables. The React signup form creates real student accounts. Teachers and librarians must be approved by an active librarian.
 
-| Command | Purpose |
-|---|---|
-| `npm run build` | Type-checks and produces a production build in `dist/` |
-| `npm run preview` | Serves the production build locally |
-| `npm run lint` | Runs ESLint |
+## Create the first librarian
 
-To type-check without building: `npx tsc -b --noEmit`.
+Run this from the project root in an interactive terminal:
 
-## 4. Logging in
-
-The app opens on a role-selection login screen. There's no real backend — auth is a hardcoded demo:
-
-| Role | ID / Username | Password |
-|---|---|---|
-| Student | `202407001` | `student123` |
-| Teacher | `ms.chen` | `teacher123` |
-| Librarian | `mr.okafor` | `library2024` |
-
-Each role lands on a different home view after login (see routing below). The login screen also has working (but non-persistent) Sign Up and Forgot Password flows — they simulate success states but don't create real accounts.
-
-## 5. Project structure
-
-```
-src/
-  App.tsx              - root component: routing, layout shell, toasts
-  data.ts               - all mock data: books, students, badges, color maps
-  index.css             - Tailwind import + global styles + font imports
-  main.tsx              - React entry point
-  components/
-    Navbar.tsx           - top bar: logo, search, catalog shortcut, user menu
-    BookCover.tsx        - reusable book cover (CSS gradient, no images)
-  screens/
-    Login.tsx            - login / signup / forgot-password flows
-    StudentDashboard.tsx  - student home: borrowed books, badges, recommendations
-    TeacherDashboard.tsx  - teacher home: class roster, reading lists, requests
-    LibrarianPanel.tsx    - librarian home: manage books, students, reports
-    BookCatalog.tsx       - browsable catalog with filter sidebar
-    BookDetails.tsx       - single book page: stats, reviews, similar books
-    MyBooks.tsx           - student's borrowed / history / wishlist tabs
-    SearchResults.tsx     - search results with filter chips
+```powershell
+npm run backend:admin -- librarian library@your-school.edu "School Librarian"
 ```
 
-There is no backend, no database, and no routing library (no React Router). Everything is one page app with view-swapping state in `App.tsx`.
+Enter a password in the hidden prompt. Use at least 12 characters containing letters and numbers. Passwords are limited to 72 UTF-8 bytes because bcrypt has that limit. No default librarian or demo password is installed.
 
-## 6. How routing works
+Sign in with the librarian username or email, then open **Accounts** in the librarian panel to approve pending staff. Verify their school identity before approval. The selected login role affects presentation; the database determines actual permissions. Student IDs currently are not verified against an external school roster.
 
-`App.tsx` owns a single piece of state:
+## Authentication
 
-```ts
-const [view, setView] = useState<View>('login');
+React calls the PHP JSON API. PHP verifies credentials with `password_verify()`, stores hashes created by `password_hash()`, and uses prepared PDO statements. Sessions use an HttpOnly cookie, strict session IDs and `SameSite=Lax`. Session IDs change at login and logout. A CSRF token is required for all POST requests. The server checks activation and the saved password hash on every protected request, so password changes invalidate old sessions. Login and recovery requests are rate limited in the database.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | API availability; does not check MySQL |
+| GET | `/api/auth/csrf` | Initialize session/CSRF cookies |
+| POST | `/api/auth/register` | Create student or pending staff account |
+| POST | `/api/auth/login` | Verify credentials and start session |
+| GET | `/api/auth/me` | Restore authenticated account |
+| POST | `/api/auth/logout` | End authenticated session |
+| POST | `/api/auth/forgot-password` | Request recovery email |
+| POST | `/api/auth/reset-password` | Consume a reset token |
+| GET | `/api/admin/users` | Librarian-only pending accounts |
+| POST | `/api/admin/users/{id}/approve` | Librarian-only approval |
+
+## Password recovery
+
+All roles use their registered email. Reset tokens are random, stored as SHA-256 hashes, expire after 60 minutes, and can be used once. Responses do not disclose whether an email belongs to an account.
+
+The default `mail_transport` is `log`: recovery URLs are written to the ignored `backend/storage/mail.log`. **This does not deliver inbox email.** To deliver mail, set `mail_transport` to `mail`, set a valid `mail_from`, and configure PHP/XAMPP's mail or sendmail settings for your mail server. PHP logs delivery errors on the server. Staff approval does not send an activation email.
+
+## Using XAMPP Apache instead
+
+Keep only `backend/public` exposed to the web. To serve this directory through Apache, add an alias to XAMPP's Apache configuration:
+
+```apache
+Alias /booksphere-api "C:/Users/Jayrald/Desktop/Projects/BookSphere/backend/public"
+<Directory "C:/Users/Jayrald/Desktop/Projects/BookSphere/backend/public">
+    Options -Indexes
+    AllowOverride All
+    Require all granted
+</Directory>
 ```
 
-`View` is a string union of every screen name (`'login' | 'student-dashboard' | 'catalog' | 'book-details' | ...`, defined at the top of `App.tsx`). Navigating is just calling:
+Set `base_path` in `backend/config.php` to `/booksphere-api`. Set this in a root `.env.local` file:
 
-```ts
-const navigate = (newView: View, bookId?: string) => {
-  setView(newView);
-  if (bookId) setSelectedBookId(bookId);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-};
+```dotenv
+PHP_API_TARGET=http://localhost/booksphere-api
 ```
 
-Every screen receives `onNavigate` as a prop and calls it instead of using links or a router. `App.tsx`'s JSX is a flat list of `{view === 'x' && <X />}` conditionals — only one screen renders at a time.
+Restart Apache and Vite. PHP routes are handled by `backend/public/.htaccess`. The optional Apache alias has not been applied to your global XAMPP configuration. If using this setup, stop `npm run api` and let Apache serve the API. Keep `frontend_url` set to the React URL so recovery links open the right page.
 
-**Role gating**: some views are role-specific (`StudentDashboard` only renders `if role === 'student'`). The nav items shown in the sidebar/top bar also change per role — see `navByRole` in `App.tsx`.
+## Checks and deployment
 
-## 7. The data model
+```powershell
+npm run build
+npm run lint
+npm test
+npm run test:backend
+```
 
-Everything lives in `src/data.ts`, no API calls. Key exports:
+The build includes TypeScript checks. Backend tests start XAMPP PHP with an isolated SQLite database and exercise the real HTTP API, cookies, CSRF, validation, staff approvals, reset-token reuse and rate limits. The live app uses MySQL.
 
-- **`books: Book[]`** — the catalog. Each book has `genre`, `readingLevel`, `rating`, `reviewCount`, `totalCopies`/`borrowedCopies` (availability = `totalCopies - borrowedCopies`), and optional `reviews[]`, `series`.
-- **`currentStudent`** — the logged-in student's state: `borrowedBooks`, `readingHistory`, `wishlist`, `badges`, `readingStreak`. This is what `StudentDashboard`, `MyBooks`, and `BookDetails` read from.
-- **`classStudents: ClassStudent[]`** — roster used by `TeacherDashboard` and `LibrarianPanel`.
-- **`levelColors`** / **`genreColors`** — color lookup tables so reading-level and genre tags render consistent colors everywhere (pass a `ReadingLevel` or genre string in, get back `{ bg, text, border }` or a hex).
+For deployment, serve React's built `dist/` and the PHP API on the same HTTPS origin. The Vite proxy only exists during development. Set `secure_cookies` to `true`, update `frontend_url`, use a dedicated MySQL account, configure real mail delivery, and expose only `backend/public`. PHP `storage`, configuration and source files must remain outside public access. Use a currently supported PHP release for production.
 
-Everything here is static mock data. "Borrowing" a book, submitting a review, etc. don't mutate `data.ts` — they just fire a toast via `onToast(...)`. If you want actions to actually persist, that's the seam where you'd introduce real state management or a backend.
+## Current scope
 
-## 8. Design system conventions
+Authentication, sessions, account registration, recovery tokens and staff approval persist in PHP/MySQL. The library catalog, loans, reviews, class rosters and reports still use React demo data in `src/data.ts`; their actions need separate PHP endpoints to become persistent.
 
-No component library — everything is hand-rolled Tailwind + inline hex colors. Conventions to follow when adding UI:
-
-- **Headings** use `fontFamily: "'Baloo 2', sans-serif"` (loaded via Google Fonts in `index.css`); body text uses the default Inter.
-- **Color palette** is hardcoded hex, not Tailwind's default palette — e.g. teal `#2A9D8F` (primary/student), blue `#4361EE` (teacher), purple `#9B5DE5` (librarian), orange `#F4A261` (accent), off-white background `#FDFBF7`.
-- **Cards**: `bg-white rounded-2xl border border-[#E8EDF0] p-4` is the standard card shell used throughout.
-- **Pills/tags**: `text-xs font-bold px-2.5 py-1 rounded-full` with a light background + matching darker text color (see `levelColors` usage).
-- Tailwind v4 is configured via `@theme` in `index.css`, not a `tailwind.config.js` file — if you need new design tokens (fonts, colors), add them there.
-
-## 9. Extending the app
-
-**Add a new book to the catalog**: add an entry to the `books` array in `data.ts` following the existing `Book` shape. It'll automatically show up in `BookCatalog`, `SearchResults`, and be borrowable from `BookDetails`.
-
-**Add a new screen**: 
-1. Create `src/screens/YourScreen.tsx` with `onNavigate`/`onToast` props (match the pattern in existing screens).
-2. Add a new value to the `View` union type in `App.tsx`.
-3. Add a `{view === 'your-view' && <YourScreen ... />}` line in `App.tsx`'s `<main>`.
-4. If it needs a nav entry, add it to the relevant array in `navByRole` (`App.tsx`).
-
-**Add a new role capability**: role-specific UI branches on the `role` prop (see `BookDetails.tsx`'s three different action-button blocks per role, or `App.tsx`'s `navByRole`/`roleAccent` maps).
-
-## 10. Known gaps (by design, not bugs)
-
-- No persistence — refreshing the page resets all state to the initial login screen.
-- No real authentication, API, or database.
-- Actions like "Borrow", "Renew", "Submit review" only show a toast; they don't mutate `data.ts`.
-- Dates are hardcoded relative to `2024-03-23` in a few places (e.g. overdue calculations) rather than using `Date.now()`, since the mock data's due dates are fixed to that timeframe.
+The previous Laravel scaffold is preserved in the ignored `.tools/laravel-backup` folder. The active backend has no Laravel dependencies.

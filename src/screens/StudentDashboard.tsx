@@ -3,6 +3,7 @@ import BookCover from '../components/BookCover';
 import type { View } from '../App';
 
 interface Props {
+  userName: string;
   onNavigate: (view: View, bookId?: string) => void;
   onToast: (msg: string, type?: 'success' | 'info' | 'warning') => void;
 }
@@ -26,7 +27,7 @@ function DueDateBadge({ dueDate }: { dueDate: string }) {
   return <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E8F8F0', color: '#2D7A50' }}>Due {diff > 14 ? dueDate : `in ${diff}d`}</span>;
 }
 
-export default function StudentDashboard({ onNavigate }: Props) {
+export default function StudentDashboard({ onNavigate, userName }: Props) {
   const borrowed = currentStudent.borrowedBooks.map((r) => ({ record: r, book: books.find((b) => b.id === r.bookId)! })).filter((x) => x.book);
   const recommended = books.filter((b) => b.readingLevel === currentStudent.readingLevel && !currentStudent.borrowedBooks.find((r) => r.bookId === b.id)).slice(0, 6);
   const earnedBadges = currentStudent.badges.filter((b) => b.earned);
@@ -47,7 +48,7 @@ export default function StudentDashboard({ onNavigate }: Props) {
             {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
           <h1 className="text-2xl font-bold text-white mb-1" style={{ fontFamily: "'Baloo 2', sans-serif" }}>
-            Hi, Alex! Ready to read? 📖
+            Hi, {userName.split(' ')[0]}! Ready to read? 📖
           </h1>
           <p className="text-white/80 text-sm">Grade 7 · {currentStudent.class} · Reading Level: Grades 6–8</p>
         </div>

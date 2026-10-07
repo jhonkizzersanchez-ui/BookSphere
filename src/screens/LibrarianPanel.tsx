@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { books, classStudents, levelColors } from '../data';
 import BookCover from '../components/BookCover';
+import AccountApprovals from '../components/AccountApprovals';
 import type { View } from '../App';
 
 interface Props {
@@ -8,7 +9,7 @@ interface Props {
   onToast: (msg: string, type?: 'success' | 'info' | 'warning') => void;
 }
 
-type Section = 'dashboard' | 'books' | 'students' | 'reports';
+type Section = 'dashboard' | 'books' | 'students' | 'reports' | 'accounts';
 
 interface AddBookForm {
   title: string;
@@ -67,6 +68,7 @@ export default function LibrarianPanel({ onToast }: Props) {
     { id: 'books', label: 'Manage Books', emoji: '📚' },
     { id: 'students', label: 'Students', emoji: '👥' },
     { id: 'reports', label: 'Reports', emoji: '📊' },
+    { id: 'accounts', label: 'Accounts', emoji: '🔐' },
   ];
 
   return (
@@ -107,6 +109,8 @@ export default function LibrarianPanel({ onToast }: Props) {
             </button>
           ))}
         </div>
+
+        {section === 'accounts' && <AccountApprovals />}
 
         {/* Dashboard */}
         {section === 'dashboard' && (
