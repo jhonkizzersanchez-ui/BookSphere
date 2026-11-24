@@ -12,7 +12,7 @@ function handlePage(string $path): void
         if ($method === 'POST' && ! validFormCsrf()) {
             flashToast('Your session expired. Please try again.', 'warning');
             $query = $_GET;
-            if (selectedRole(postString('role'))) {
+            if (loginRole(postString('role'))) {
                 $query['role'] = postString('role');
             }
             header('Location: '.url($path, $query), true, 303);
@@ -62,9 +62,18 @@ function handlePage(string $path): void
         if (preg_match('#^/librarian/accounts/([0-9]+)/approve$#', $path, $match) && $method === 'POST') {
             approveSubmit($user, (int) $match[1]);
         }
+        if (preg_match('#^/admin/users/([0-9]+)/(approve|deactivate|reactivate|role|reset-link)$#', $path, $match) && $method === 'POST') {
+            adminUserAction($user, (int) $match[1], $match[2]);
+        }
         guestPage('error', 'Page not found', ['heading' => 'Page not found', 'message' => 'That page does not exist.'], 404);
     } catch (Throwable $error) {
         error_log('BookSphere page error: '.$error->getMessage());
+        if (databaseNeedsUpdate($error)) {
+            guestPage('error', 'Database update needed', [
+                'heading' => 'Database update needed',
+                'message' => 'Run npm run backend:setup once, then reload this page.',
+            ], 500);
+        }
         guestPage('error', 'Something went wrong', [
             'heading' => 'Something went wrong',
             'message' => 'The PHP backend encountered a problem. Check the database configuration and server logs.',
@@ -111,6 +120,12 @@ function selectedRole(?string $value, ?string $default = null): ?string
     return isset(roleOptions()[$value ?? '']) ? $value : $default;
 }
 
+/** Like selectedRole() but also accepts admin, which can sign in but never sign up. */
+function loginRole(?string $value): ?string
+{
+    return in_array($value, ['student', 'teacher', 'librarian', 'admin'], true) ? $value : null;
+}
+
 /* ---------- Sign in ---------- */
 
 function loginForm(array $vars = []): never
@@ -119,7 +134,7 @@ function loginForm(array $vars = []): never
         redirect('/dashboard');
     }
     guestPage('auth/login', 'Sign in', $vars + [
-        'role' => selectedRole(queryString('role')),
+        'role' => loginRole(queryString('role')),
         'username' => '',
         'error' => '',
     ]);
@@ -127,7 +142,7 @@ function loginForm(array $vars = []): never
 
 function loginSubmit(): never
 {
-    $role = selectedRole(postString('role'));
+    $role = loginRole(postString('role'));
     $username = postString('username');
     $password = postString('password');
     $error = '';
@@ -275,6 +290,26 @@ function dashboardPage(array $user): never
     if ($user['role'] === 'teacher') {
         appPage('teacher-dashboard', $user, 'dashboard', 'Teacher Dashboard');
     }
+    if ($user['role'] === 'admin') {
+        $role = queryString('role');
+        $status = queryString('status');
+        $filters = [
+            'q' => queryString('q'),
+            'role' => in_array($role, ['student', 'teacher', 'librarian', 'admin'], true) ? $role : null,
+            'status' => in_array($status, ['active', 'pending', 'deactivated'], true) ? $status : null,
+        ];
+        appPage('admin-dashboard', $user, 'dashboard', 'Admin Dashboard', [
+            'counts' => userCounts(),
+            'directory' => userDirectory($filters['q'], $filters['role'], $filters['status'], (int) queryString('page', '1')),
+            'filters' => $filters,
+        ]);
+    }
+    if ($user['role'] !== 'librarian') {
+        guestPage('error', 'Account role not recognised', [
+            'heading' => 'Account role not recognised',
+            'message' => 'Your account has a role BookSphere does not know. Contact the library.',
+        ], 403);
+    }
     $sections = ['dashboard', 'books', 'students', 'reports', 'accounts'];
     $section = in_array(queryString('section'), $sections, true) ? queryString('section') : 'dashboard';
     appPage('librarian-panel', $user, 'dashboard', 'Librarian Panel', [
@@ -285,7 +320,7 @@ function dashboardPage(array $user): never
 
 function approveSubmit(array $user, int $id): never
 {
-    if ($user['role'] !== 'librarian') {
+    if (! in_array($user['role'], ['librarian', 'admin'], true)) {
         flashToast('Librarian access is required.', 'warning');
         redirect('/dashboard');
     }
@@ -296,4 +331,46 @@ function approveSubmit(array $user, int $id): never
         flashToast($exception->getMessage(), 'warning');
     }
     redirect('/dashboard', ['section' => 'accounts']);
+}
+
+/** Keeps only the directory filters from the hidden "return" query string, so redirects cannot be steered. */
+function adminReturnQuery(): array
+{
+    parse_str(postString('return'), $parsed);
+    $query = [];
+    foreach (['q', 'role', 'status', 'page'] as $key) {
+        if (isset($parsed[$key]) && is_string($parsed[$key])) {
+            $query[$key] = $parsed[$key];
+        }
+    }
+    return $query;
+}
+
+function adminUserAction(array $user, int $id, string $action): never
+{
+    if ($user['role'] !== 'admin') {
+        flashToast('Admin access is required.', 'warning');
+        redirect('/dashboard');
+    }
+    try {
+        if ($action === 'approve') {
+            $target = approveAccount($id);
+            flashToast($target['name'].' approved.', 'success');
+        } elseif ($action === 'deactivate') {
+            $target = deactivateAccount($user, $id);
+            flashToast($target['name'].' deactivated.', 'success');
+        } elseif ($action === 'reactivate') {
+            $target = reactivateAccount($id);
+            flashToast($target['name'].' reactivated.', 'success');
+        } elseif ($action === 'role') {
+            $target = changeAccountRole($user, $id, postString('role'));
+            flashToast($target['name'].' is now '.roleInfo($target['role'])['label'].'.', 'success');
+        } else {
+            $target = sendAccountResetLink($id);
+            flashToast('Password reset link requested for '.$target['email'].'.', 'success');
+        }
+    } catch (ApiException $exception) {
+        flashToast($exception->getMessage(), 'warning');
+    }
+    redirect('/dashboard', adminReturnQuery());
 }

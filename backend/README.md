@@ -87,7 +87,7 @@ Expected setup message:
 BookSphere authentication tables are ready. Existing accounts were preserved.
 ```
 
-Setup creates missing tables using `schema.sql`. It preserves existing accounts and does not drop tables or create a librarian automatically.
+Setup creates missing tables using `schema.sql`. It preserves existing accounts and does not drop tables or create a librarian automatically. After updating BookSphere, run `npm run backend:setup` once to add the new `deactivated_at` column to the `users` table.
 
 ## 5. Run BookSphere
 
@@ -112,17 +112,30 @@ Apache is needed for phpMyAdmin in this setup. The app itself runs through `npm 
 
 Press **Ctrl+C** in the terminal to stop the server. To run the app again later, start MySQL and run `npm run api`; you do not need to repeat installation or table setup each time.
 
-## 6. Sign in as a librarian and approve staff
+## 6. Create an admin
+
+Admins cannot sign up. Create the first one from an interactive terminal:
+
+```powershell
+npm run backend:create-admin -- admin admin@your-school.edu "School Admin"
+```
+
+Sign in through **Administrator sign-in** on the login page (`/login?role=admin`).
+
+The admin dashboard can approve pending accounts, deactivate and reactivate accounts, change roles, and send password reset links. Admins cannot deactivate their own account or change their own role, and the last active admin is always protected. Librarians still approve pending staff. **Send reset link** uses the normal recovery email. With the default `mail_transport = log`, nothing is delivered and the link is written to `backend/storage/mail.log`.
+
+
+## 7. Sign in as a librarian and approve staff
 
 On the current machine, an active account with username **`librarian`** has already been created. Use the password provided in the setup conversation. Passwords are not included in this document.
 
 For a fresh database, create your first active librarian from an interactive terminal:
 
 ```bat
-npm run backend:admin -- librarian librarian@your-school.edu "School Librarian"
+npm run backend:create-librarian -- librarian librarian@your-school.edu "School Librarian"
 ```
 
-Replace the email with your actual librarian email. The command asks for a password without displaying it. Use at least 12 characters containing letters and numbers, up to 72 UTF-8 bytes. This command creates an account; it does not reset an existing account's password. Use a different username and email if either already exists.
+Replace the email with your actual librarian email. The command asks for a password without displaying it. Use at least 12 characters containing letters and numbers, up to 72 UTF-8 bytes. This command creates an account; it does not reset an existing account's password. Use a different username and email if either already exists. (`npm run backend:admin` is the older name for the same command.)
 
 Then:
 
@@ -131,9 +144,9 @@ Then:
 3. Open **Accounts** in the librarian panel.
 4. Check the pending registration and click **Approve** for authorized staff.
 
-Students are activated on registration. Teachers and librarians remain pending until an active librarian approves them. Permissions are checked against the database role.
+Students are activated on registration. Teachers and librarians remain pending until an active librarian or admin approves them. Permissions are checked against the database role.
 
-## 7. View the saved data
+## 8. View the saved data
 
 Open [phpMyAdmin](http://localhost/phpmyadmin), select **booksphere**, choose a table, and click **Browse**.
 
@@ -147,7 +160,7 @@ Passwords are hashed and cannot be viewed as their original text. Older installa
 
 Books, loans, reviews and dashboard reports still use the demo data in `backend/src/data.php`. They are not yet stored in MySQL.
 
-## 8. Check that the app is working
+## 9. Check that the app is working
 
 Open [BookSphere](http://localhost:8000). Signed-out visitors are sent to the sign-in page. To check the PHP server on its own, open [API health](http://localhost:8000/api/health). Expected response:
 
@@ -165,7 +178,7 @@ npm test
 
 These tests run a separate PHP server with a temporary SQLite database, so they do not change your MySQL accounts. They cover both the JSON API and the HTML pages. `npm run test:backend` runs the same tests.
 
-## 9. Password recovery
+## 10. Password recovery
 
 The local default writes password reset links to `backend/storage/mail.log`; it does not deliver email to an inbox. Request a reset from **Forgot password?**, then open the log locally and open the newest link in your browser. Links start with the `app_url` setting, for example `http://localhost:8000/reset-password?reset_token=…&email=…`.
 
@@ -182,11 +195,12 @@ For email delivery, set `mail_transport` to `mail` and configure PHP/XAMPP's mai
 | `Access denied for user` | Match the database username and password in `backend/config.php` to your MySQL settings. |
 | `could not find driver` | Enable `pdo_mysql` in the selected PHP installation's `php.ini`, then restart the server. |
 | **Something went wrong** page | PHP hit an error, most often the database connection. Check that MySQL is running and the settings in `backend/config.php`, then the PHP error log (`C:\xampp\php\logs\php_error_log` with XAMPP's default `php.ini`). |
+| `Unknown column 'deactivated_at'` or **Database update needed** page | The database was created before the admin feature. Run `npm run backend:setup` once, then reload. |
 | Pages appear unstyled | The browser could not load Tailwind from `cdn.jsdelivr.net`. Check the internet connection, firewall or content blocker, then reload. |
 | "Your session expired. Please try again." after submitting a form | The form's security token no longer matched the session, for example after two hours of inactivity (`session_lifetime`) or after cookies were cleared. Reload the page and submit again. |
 | Links or redirects open the wrong address | Check `base_path` (empty for `npm run api`, the alias such as `/booksphere` under Apache) and `app_url` in `backend/config.php`. |
 | phpMyAdmin will not open | Start Apache and MySQL; check XAMPP's logs if either service fails to start. |
-| Staff cannot sign in | Sign in as an active librarian and approve their registration under **Accounts**. |
+| Staff cannot sign in | Sign in as an active librarian and approve their registration under **Accounts**, or an admin deactivated them: an admin can reactivate them from the admin dashboard. |
 | Reset email does not arrive | Local recovery uses `backend/storage/mail.log` until real mail delivery is configured. |
 
 The blank MySQL root password and HTTP development server described here are for local development. Deployment requires HTTPS, secure cookies, a dedicated database user, real email delivery and exposing only `backend/public`; see [ONBOARDING.md](../ONBOARDING.md#checks-and-deployment).

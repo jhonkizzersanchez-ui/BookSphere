@@ -5,6 +5,7 @@ declare(strict_types=1);
 ini_set('display_errors', '0');
 require dirname(__DIR__).'/src/bootstrap.php';
 require dirname(__DIR__).'/src/auth.php';
+require dirname(__DIR__).'/src/admin.php';
 require dirname(__DIR__).'/src/api.php';
 require dirname(__DIR__).'/src/data.php';
 require dirname(__DIR__).'/src/view.php';

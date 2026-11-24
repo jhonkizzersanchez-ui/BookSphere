@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     password VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'student',
     is_active TINYINT(1) NOT NULL DEFAULT 0,
+    deactivated_at TIMESTAMP NULL DEFAULT NULL,
     grade VARCHAR(20) NULL,
     class_code VARCHAR(50) NULL,
     staff_id VARCHAR(50) NULL,

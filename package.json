@@ -7,7 +7,9 @@
     "dev": "node scripts/php.mjs serve",
     "api": "node scripts/php.mjs serve",
     "backend:setup": "node scripts/php.mjs setup",
-    "backend:admin": "node scripts/create-librarian.mjs",
+    "backend:create-librarian": "node scripts/create-account.mjs librarian",
+    "backend:admin": "node scripts/create-account.mjs librarian",
+    "backend:create-admin": "node scripts/create-account.mjs admin",
     "test": "node --test tests/*.test.mjs",
     "test:backend": "node --test tests/*.test.mjs"
   }

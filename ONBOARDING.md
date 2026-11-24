@@ -16,9 +16,11 @@ npm run backend:setup
 npm run api
 ```
 
+If you are updating an existing installation, run `npm run backend:setup` once after pulling to add the new `deactivated_at` column.
+
 Open `http://localhost:8000`. `npm run dev` does the same thing as `npm run api`. Both start PHP's development server with `C:\xampp\php\php.exe` and serve the whole app, pages and `/api/*`, from `backend/public`. The runner accepts `PHP_BIN` if XAMPP is installed somewhere else. There are no npm packages to install. This is a PHP development server using XAMPP's PHP and MySQL; Apache is optional.
 
-Setup creates missing authentication tables and preserves existing accounts. It never drops tables. The sign-up form creates real student accounts. Teachers and librarians must be approved by an active librarian.
+Setup creates missing authentication tables and preserves existing accounts. It never drops tables. The sign-up form creates real student accounts. Teachers and librarians must be approved by an active librarian or admin.
 
 ## How the app is organised
 
@@ -31,6 +33,7 @@ Setup creates missing authentication tables and preserves existing accounts. It 
 | `backend/src/pages.php` | Page routes, form handling and redirects |
 | `backend/src/view.php` | Rendering, escaping (`e()`), URLs, CSRF fields, flash messages and shared UI pieces such as book covers |
 | `backend/src/api.php` | JSON API |
+| `backend/src/admin.php` | Admin directory (counts, search, filters, paging) and the account actions: deactivate, reactivate, change role, send reset link |
 | `backend/src/auth.php`, `backend/src/bootstrap.php` | Accounts, sessions, validation, rate limits and database access |
 | `backend/src/data.php` | Demo library data |
 | `backend/views/` | Templates: `layout.php` (signed-in shell), `guest.php` (signed-out pages), `partials/`, `auth/`, `librarian/` and one file per page |
@@ -39,7 +42,7 @@ Setup creates missing authentication tables and preserves existing accounts. It 
 | --- | --- |
 | `/login`, `/register` | Sign in and sign up |
 | `/forgot-password`, `/reset-password` | Password recovery |
-| `/dashboard` | Dashboard for the signed-in role. The librarian panel uses `?section=` (`dashboard`, `books`, `students`, `reports`, `accounts`) |
+| `/dashboard` | Dashboard for the signed-in role. The librarian panel uses `?section=` (`dashboard`, `books`, `students`, `reports`, `accounts`). The admin dashboard uses `?q=`, `role=`, `status=` and `page=` to search, filter and page the account list |
 | `/catalog`, `/search?q=`, `/books/{id}` | Catalog, search and book details |
 | `/my-books` | My Books (students only) |
 
@@ -50,12 +53,26 @@ Signed-out visitors are redirected to `/login`.
 Run this from the project root in an interactive terminal:
 
 ```powershell
-npm run backend:admin -- librarian library@your-school.edu "School Librarian"
+npm run backend:create-librarian -- librarian library@your-school.edu "School Librarian"
 ```
+
+`npm run backend:admin` is the older name for the same command.
 
 Enter a password in the hidden prompt. Use at least 12 characters containing letters and numbers. Passwords are limited to 72 UTF-8 bytes because bcrypt has that limit. No default librarian or demo password is installed.
 
 Sign in with the librarian username or email, then open **Accounts** in the librarian panel to approve pending staff. Verify their school identity before approval. The selected login role affects presentation; the database determines actual permissions. Student IDs currently are not verified against an external school roster.
+
+## Create the first admin
+
+Admins manage every account. They cannot be created through sign-up. Create the first one from an interactive terminal:
+
+```bash
+npm run backend:create-admin -- admin admin@your-school.edu "School Admin"
+```
+
+Enter a hidden password (12+ characters, letters and numbers). Then open the login page and choose **Administrator sign-in** (or go to `/login?role=admin`).
+
+The admin dashboard lists every account with search, role and status filters. For each account an admin can approve it (pending), deactivate or reactivate it, change its role, or send a password reset link. Deactivating an account or changing its role takes effect on that person's next click. Admins cannot deactivate their own account or change their own role, and the last active admin can never be removed. Librarians still approve pending staff from the **Accounts** section of their panel. **Send reset link** uses the normal recovery email. With the default `mail_transport = log`, nothing is delivered and the link is written to `backend/storage/mail.log`.
 
 ## Authentication
 
@@ -73,8 +90,8 @@ The pages call the authentication functions directly. The JSON API is still avai
 | POST | `/api/auth/logout` | End authenticated session |
 | POST | `/api/auth/forgot-password` | Request recovery email |
 | POST | `/api/auth/reset-password` | Consume a reset token |
-| GET | `/api/admin/users` | Librarian-only pending accounts |
-| POST | `/api/admin/users/{id}/approve` | Librarian-only approval |
+| GET | `/api/admin/users` | Librarian or admin: pending accounts |
+| POST | `/api/admin/users/{id}/approve` | Librarian or admin: approval |
 
 ## Password recovery
 

@@ -9,6 +9,7 @@
  *   data-clear="#input" Click clears that input; the button hides itself while the input is empty.
  *   data-autosubmit     On an input/select: submit its form when the value changes.
  *   data-busy-text="Signing in…"   On a submit button: shown while the form submits; blocks double submits.
+ *   data-confirm="Are you sure?"  On a form or submit button: asks before submitting; Cancel stops the submit.
  *   data-password-toggle="#input"  Click switches the input between password and text.
  *   data-modal          Marks a modal container (start it with the `hidden` attribute).
  *   data-modal-open="#id" data-fields='{"title":"…"}' data-texts='{"heading":"…"}'
@@ -142,6 +143,11 @@
 
   document.addEventListener('submit', (event) => {
     const form = event.target;
+    const confirmation = (event.submitter && event.submitter.dataset.confirm) || form.dataset.confirm;
+    if (confirmation && !window.confirm(confirmation)) {
+      event.preventDefault();
+      return;
+    }
     if (form.dataset.submitting) {
       event.preventDefault();
       return;

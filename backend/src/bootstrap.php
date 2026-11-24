@@ -70,12 +70,34 @@ function installSchema(): void
         database()->exec('CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, login_id TEXT NOT NULL UNIQUE,
             email TEXT NOT NULL UNIQUE, password TEXT NOT NULL, role TEXT NOT NULL DEFAULT "student",
-            is_active INTEGER NOT NULL DEFAULT 0, grade TEXT, class_code TEXT, staff_id TEXT,
+            is_active INTEGER NOT NULL DEFAULT 0, deactivated_at TEXT NULL, grade TEXT, class_code TEXT, staff_id TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         ); CREATE TABLE IF NOT EXISTS password_reset_tokens (
             email TEXT PRIMARY KEY, token TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
         ); CREATE TABLE IF NOT EXISTS auth_rate_limits (bucket TEXT PRIMARY KEY, hits INTEGER NOT NULL, expires_at INTEGER NOT NULL);');
     }
+    upgradeSchema();
+}
+
+/** Adds columns introduced after the first release to databases that already exist. */
+function upgradeSchema(): void
+{
+    if (appConfig()['db_driver'] === 'mysql') {
+        $exists = (int) sql("SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'deactivated_at'")->fetchColumn();
+        if ($exists === 0) {
+            database()->exec('ALTER TABLE users ADD COLUMN deactivated_at TIMESTAMP NULL DEFAULT NULL AFTER is_active');
+        }
+    } elseif (! in_array('deactivated_at', array_column(sql('PRAGMA table_info(users)')->fetchAll(), 'name'), true)) {
+        database()->exec('ALTER TABLE users ADD COLUMN deactivated_at TEXT NULL');
+    }
+}
+
+/** True when a query failed because a column added by a newer release is missing (setup has not run yet). */
+function databaseNeedsUpdate(Throwable $error): bool
+{
+    return $error instanceof PDOException
+        && ($error->getCode() === '42S22' || stripos($error->getMessage(), 'no such column') !== false);
 }
 
 function jsonResponse(array $body = [], int $status = 200): void
@@ -195,9 +217,10 @@ function authenticatedUser(bool $librarianOnly = false): array
         throw new ApiException('Unauthenticated.', 401);
     }
     if (! (bool) $user['is_active']) {
+        unset($_SESSION['user_id'], $_SESSION['password_hash']);
         throw new ApiException('This account is awaiting approval or has been disabled.', 403);
     }
-    if ($librarianOnly && $user['role'] !== 'librarian') {
+    if ($librarianOnly && ! in_array($user['role'], ['librarian', 'admin'], true)) {
         throw new ApiException('Librarian access is required.', 403);
     }
     return $user;

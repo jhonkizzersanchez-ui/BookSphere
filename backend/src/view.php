@@ -163,9 +163,17 @@ function roleOptions(): array
     ];
 }
 
+/** Presentation for every role, including admin (which is not offered at sign-up). Unknown roles get a neutral look. */
+function roleInfo(string $role): array
+{
+    $admin = ['id' => 'admin', 'label' => 'Admin', 'emoji' => '🛡️', 'description' => 'Manage every account', 'color' => '#264653', 'bg' => '#E8EDF0'];
+    $unknown = ['id' => $role, 'label' => ucfirst($role), 'emoji' => '👤', 'description' => '', 'color' => '#6B8EA0', 'bg' => '#F5F7F8'];
+    return (roleOptions() + ['admin' => $admin])[$role] ?? $unknown;
+}
+
 function roleAccent(string $role): string
 {
-    return roleOptions()[$role]['color'] ?? '#2A9D8F';
+    return roleInfo($role)['color'];
 }
 
 function initials(string $name): string

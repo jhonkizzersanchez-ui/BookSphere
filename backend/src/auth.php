@@ -39,6 +39,25 @@ function registerAccount(array $data): array
     return publicUser(sql('SELECT * FROM users WHERE id = ?', [(int) database()->lastInsertId()])->fetch());
 }
 
+/** Creates an active librarian or admin account (used by the bin scripts; staff cannot sign up as admin). */
+function createStaffAccount(string $role, string $login, string $email, string $name, string $password): array
+{
+    if (! in_array($role, ['librarian', 'admin'], true)) {
+        throw new RuntimeException('Role must be librarian or admin.');
+    }
+    $data = ['username' => $login, 'email' => $email, 'fullName' => $name, 'password' => $password];
+    $login = textField($data, 'username', 50);
+    $email = validEmail($data);
+    $name = textField($data, 'fullName', 120);
+    $password = validPassword($data, false);
+    if (! preg_match('/^[a-zA-Z0-9._-]+$/', $login)) {
+        throw new RuntimeException('Use only letters, numbers, dots, hyphens or underscores in the login ID.');
+    }
+    sql('INSERT INTO users (name, login_id, email, password, role, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)', [$name, $login, $email, hashPassword($password), $role]);
+    return sql('SELECT * FROM users WHERE id = ?', [(int) database()->lastInsertId()])->fetch();
+}
+
 function signIn(array $data): array
 {
     $login = textField($data, 'username', 255);
@@ -79,9 +98,18 @@ function signOut(): void
     csrfCookie();
 }
 
+/** 'active', 'pending' (awaiting approval) or 'deactivated' (switched off by an administrator). */
+function accountStatus(array $user): string
+{
+    if ((bool) $user['is_active']) {
+        return 'active';
+    }
+    return $user['deactivated_at'] === null ? 'pending' : 'deactivated';
+}
+
 function pendingAccounts(): array
 {
-    return sql('SELECT * FROM users WHERE is_active = 0 ORDER BY created_at, id LIMIT 100')->fetchAll();
+    return sql('SELECT * FROM users WHERE is_active = 0 AND deactivated_at IS NULL ORDER BY created_at, id LIMIT 100')->fetchAll();
 }
 
 function approveAccount(int $id): array
@@ -90,7 +118,14 @@ function approveAccount(int $id): array
     if (! $user) {
         throw new ApiException('Account not found.', 404);
     }
-    sql('UPDATE users SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [$user['id']]);
+    if (accountStatus($user) !== 'pending') {
+        throw new ApiException('Only pending accounts can be approved.', 422);
+    }
+    $changed = sql('UPDATE users SET is_active = 1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND is_active = 0 AND deactivated_at IS NULL', [$user['id']])->rowCount();
+    if ($changed !== 1) {
+        throw new ApiException('Only pending accounts can be approved.', 422);
+    }
     $user['is_active'] = 1;
     return $user;
 }

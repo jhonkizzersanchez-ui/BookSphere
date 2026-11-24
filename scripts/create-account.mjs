@@ -2,9 +2,11 @@ import { spawn } from 'node:child_process';
 import { emitKeypressEvents } from 'node:readline';
 import { backend, php } from './php.mjs';
 
-const args = process.argv.slice(2);
-if (args.length !== 3 || !process.stdin.isTTY) {
-  process.stderr.write('Run interactively: npm run backend:admin -- librarian library@your-school.edu "School Librarian"\n');
+const [role, ...args] = process.argv.slice(2);
+const scripts = { librarian: 'bin/create-librarian.php', admin: 'bin/create-admin.php' };
+if (!scripts[role] || args.length !== 3 || !process.stdin.isTTY) {
+  process.stderr.write('Run interactively: npm run backend:admin -- librarian library@your-school.edu "School Librarian"\n'
+    + '               or: npm run backend:create-admin -- admin admin@your-school.edu "School Admin"\n');
   process.exit(1);
 }
 process.stdout.write('Password (12+ characters, letters and numbers): ');
@@ -21,7 +23,7 @@ process.stdin.on('keypress', (text, key) => {
     process.stdin.setRawMode(false);
     process.stdin.pause();
     process.stdout.write('\n');
-    const child = spawn(php, ['bin/create-librarian.php', ...args], { cwd: backend, stdio: ['pipe', 'inherit', 'inherit'] });
+    const child = spawn(php, [scripts[role], ...args], { cwd: backend, stdio: ['pipe', 'inherit', 'inherit'] });
     child.stdin.end(password + '\n');
     password = '';
     child.on('error', error => { process.stderr.write(error.message + '\n'); process.exitCode = 1; });

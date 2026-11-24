@@ -59,6 +59,9 @@ function handleApi(string $path): void
         jsonResponse(['message' => $error->getMessage(), 'errors' => $error->errors], $error->status);
     } catch (Throwable $error) {
         error_log('BookSphere API error: '.$error->getMessage());
+        if (databaseNeedsUpdate($error)) {
+            jsonResponse(['message' => 'Database update needed: run npm run backend:setup.'], 500);
+        }
         jsonResponse(['message' => 'The PHP backend encountered a problem. Check the database configuration and server logs.'], 500);
     }
 }

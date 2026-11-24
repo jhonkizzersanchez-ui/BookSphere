@@ -7,7 +7,8 @@
  * @var ?string $role @var string $username @var string $error
  */
 $roles = roleOptions();
-$current = $role !== null ? ($roles[$role] ?? null) : null;
+$isAdmin = $role === 'admin';
+$current = $role !== null ? roleInfo($role) : null;
 $usernameLabel = static fn (?string $id): string => $id === 'student' ? 'Student ID or email' : 'School email or username';
 $usernamePlaceholder = static fn (?string $id): string => $id === 'student' ? 'Enter Student ID or email' : 'Enter school email or username';
 $inputCls = 'w-full px-3 py-2.5 rounded-xl border border-[#E8EDF0] text-sm text-[#264653] placeholder:text-[#BCCDD5] focus:outline-none focus:ring-2 focus:ring-[#2A9D8F]/30 focus:border-[#2A9D8F] transition-all';
@@ -30,6 +31,11 @@ $inputCls = 'w-full px-3 py-2.5 rounded-xl border border-[#E8EDF0] text-sm text-
     <div class="bg-white rounded-2xl shadow-sm border border-[#E8EDF0] p-6">
       <form method="post" action="<?= e(url('login')) ?>" data-login-form>
         <?= csrfField() ?>
+        <?php if ($isAdmin): ?>
+        <input type="hidden" name="role" value="admin">
+        <p class="text-sm font-semibold mb-1" style="color: #264653">Administrator sign-in</p>
+        <p class="text-xs mb-4"><a href="<?= e(url('login')) ?>" class="font-semibold hover:opacity-70 transition-opacity" style="color: #2A9D8F">Not an admin? Choose your role</a></p>
+        <?php else: ?>
         <p id="login-role-label" class="text-sm font-semibold mb-3" style="color: #264653">I am a…</p>
         <div class="grid grid-cols-3 gap-2 mb-6" role="radiogroup" aria-labelledby="login-role-label">
           <?php foreach ($roles as $option): ?>
@@ -44,6 +50,7 @@ $inputCls = 'w-full px-3 py-2.5 rounded-xl border border-[#E8EDF0] text-sm text-
         </div>
 
         <p class="text-xs text-center mb-4 px-2 py-1.5 rounded-lg" aria-live="polite" data-role-description<?= $current ? ' style="color: '.e($current['color']).'; background-color: '.e($current['bg']).'"' : ' hidden' ?>><?= e($current['description'] ?? '') ?></p>
+        <?php endif ?>
 
         <div class="space-y-3 mt-2">
           <div>
@@ -96,6 +103,9 @@ $inputCls = 'w-full px-3 py-2.5 rounded-xl border border-[#E8EDF0] text-sm text-
     <p class="text-center text-sm mt-4" style="color: #6B8EA0">
       New to BookSphere? <a href="<?= e(url('register')) ?>" class="font-semibold hover:opacity-70 transition-opacity" style="color: #2A9D8F">Create an account</a>
     </p>
+    <?php if (! $isAdmin): ?>
+    <p class="text-center text-xs mt-2"><a href="<?= e(url('login', ['role' => 'admin'])) ?>" class="font-semibold hover:opacity-70 transition-opacity" style="color: #6B8EA0">Administrator sign-in</a></p>
+    <?php endif ?>
   </div>
 </div>
 <script src="<?= e(asset('auth.js')) ?>" defer></script>

@@ -5,7 +5,7 @@
  */
 $role = $user['role'];
 $accent = roleAccent($role);
-$roleLabel = roleOptions()[$role]['label'];
+$roleLabel = roleInfo($role)['label'];
 $navItems = [
     ['key' => 'dashboard', 'href' => url('dashboard'), 'label' => 'Dashboard', 'emoji' => '🏠'],
     ['key' => 'catalog', 'href' => url('catalog'), 'label' => 'Catalog', 'emoji' => '📚'],
