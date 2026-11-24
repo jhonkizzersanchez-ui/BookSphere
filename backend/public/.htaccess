@@ -1,4 +1,9 @@
 Options -Indexes
 RewriteEngine On
+# When Apache serves this folder through an Alias (e.g. /booksphere), uncomment
+# the next line and set it to the same value as base_path in config.php.
+# RewriteBase /booksphere
 RewriteRule ^index\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule \.(css|js|svg|png|ico)$ - [L]
 RewriteRule ^ index.php [L]

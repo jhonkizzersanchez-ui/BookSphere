@@ -1,0 +1,51 @@
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #fdfbf7;
+  color: #264653;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(42, 157, 143, 0.25) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(42, 157, 143, 0.3);
+  border-radius: 3px;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+[hidden] {
+  display: none !important;
+}

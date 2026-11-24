@@ -1,6 +1,6 @@
 # BookSphere
 
-React + Vite frontend with a plain PHP/MySQL authentication backend using XAMPP.
+School library app rendered entirely by plain PHP, with MySQL authentication using XAMPP. There is no React, Vite or Node build step; Node.js is only used to run PHP through `npm` scripts and to run the tests.
 
 Start MySQL in XAMPP, create the `booksphere` database, then run:
 
@@ -9,14 +9,8 @@ npm run backend:setup
 npm run api
 ```
 
-In another terminal:
-
-```powershell
-npm run dev
-```
-
-Open `http://localhost:5173`. See [ONBOARDING.md](ONBOARDING.md) for configuration, creating the first librarian, password recovery, and the optional Apache setup.
+Open `http://localhost:8000`. `npm run dev` is an alias of `npm run api`. Pages load Tailwind CSS from the jsDelivr CDN, so the browser needs internet access for styles. See [ONBOARDING.md](ONBOARDING.md) for configuration, how the app is organised, creating the first librarian, password recovery, and the optional Apache setup.
 
 For step-by-step XAMPP installation, database setup, run commands and troubleshooting, see the [backend installation guide](backend/README.md).
 
-Authentication and staff approvals are persistent. Library catalog, loans, reviews and reports currently use demo data.
+Authentication and staff approvals are persistent. Library catalog, loans, reviews and reports currently use demo data from `backend/src/data.php`.

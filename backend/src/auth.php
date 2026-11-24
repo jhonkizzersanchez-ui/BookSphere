@@ -72,6 +72,29 @@ function signIn(array $data): array
     return publicUser($user);
 }
 
+function signOut(): void
+{
+    $_SESSION = ['csrf' => bin2hex(random_bytes(32)), 'last_seen' => time()];
+    session_regenerate_id(true);
+    csrfCookie();
+}
+
+function pendingAccounts(): array
+{
+    return sql('SELECT * FROM users WHERE is_active = 0 ORDER BY created_at, id LIMIT 100')->fetchAll();
+}
+
+function approveAccount(int $id): array
+{
+    $user = sql('SELECT * FROM users WHERE id = ?', [$id])->fetch();
+    if (! $user) {
+        throw new ApiException('Account not found.', 404);
+    }
+    sql('UPDATE users SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [$user['id']]);
+    $user['is_active'] = 1;
+    return $user;
+}
+
 function forgotPassword(array $data): void
 {
     $email = validEmail($data);
@@ -94,7 +117,7 @@ function forgotPassword(array $data): void
             ON CONFLICT(email) DO UPDATE SET token = excluded.token, created_at = CURRENT_TIMESTAMP', [$email, $hashed]);
     }
     $config = appConfig();
-    $url = rtrim($config['frontend_url'], '/').'/?'.http_build_query(['reset_token' => $token, 'email' => $email]);
+    $url = rtrim($config['app_url'] ?? 'http://localhost:8000', '/').rtrim($config['base_path'], '/').'/reset-password?'.http_build_query(['reset_token' => $token, 'email' => $email]);
     if ($config['mail_transport'] === 'log') {
         if (file_put_contents($config['storage'].'/mail.log', $url.PHP_EOL, FILE_APPEND | LOCK_EX) === false) {
             error_log('BookSphere could not write the local reset email log.');

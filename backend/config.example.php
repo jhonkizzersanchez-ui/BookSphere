@@ -6,7 +6,8 @@ return [
     'db_name' => 'booksphere',
     'db_user' => 'root',
     'db_password' => '',
-    'frontend_url' => 'http://localhost:5173',
+    // Public address of the site, used in password reset links (without base_path).
+    'app_url' => 'http://localhost:8000',
     'base_path' => '',
     'secure_cookies' => false,
     'session_lifetime' => 7200,
